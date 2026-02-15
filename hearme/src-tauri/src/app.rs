@@ -8,7 +8,7 @@ use crate::codec;
 use crate::playback::PlaybackStream;
 use crate::transport::{ListenSession, ShareSession, Ticket};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 use tracing::{error, info};
 
@@ -140,7 +140,7 @@ pub async fn start_listening(
         .map_err(|e| e.to_string())?;
 
     // Start playback — take the producer out for the decode task
-    let playback = PlaybackStream::start().map_err(|e| e.to_string())?;
+    let mut playback = PlaybackStream::start().map_err(|e| e.to_string())?;
     let mut producer = playback.take_producer();
 
     // Spawn task: receive Opus packets -> decode -> push to ring buffer

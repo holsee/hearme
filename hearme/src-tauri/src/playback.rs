@@ -6,8 +6,8 @@
 
 use crate::capture::{CHANNELS, SAMPLE_RATE};
 use anyhow::Result;
-use cpal::Sample;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::Sample;
 
 /// Handle to an active playback stream. Drop to stop.
 pub struct PlaybackStream {
@@ -26,7 +26,7 @@ impl PlaybackStream {
 
         let config = cpal::StreamConfig {
             channels: CHANNELS,
-            sample_rate: cpal::SampleRate(SAMPLE_RATE),
+            sample_rate: SAMPLE_RATE,
             buffer_size: cpal::BufferSize::Default,
         };
 

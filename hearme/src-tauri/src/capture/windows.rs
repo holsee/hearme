@@ -8,9 +8,6 @@ use super::{AudioSource, CHANNELS, CaptureHandle, SAMPLE_RATE, SAMPLES_PER_FRAME
 use tokio::sync::mpsc;
 
 pub async fn list_sources() -> anyhow::Result<Vec<AudioSource>> {
-    // Use sysinfo to enumerate processes, then filter to those likely producing audio.
-    // We can't know for sure which processes have audio without WASAPI session enumeration,
-    // but listing all processes and letting the user pick is the simplest approach.
     use sysinfo::System;
 
     let mut sys = System::new();
@@ -21,7 +18,6 @@ pub async fn list_sources() -> anyhow::Result<Vec<AudioSource>> {
         .iter()
         .filter_map(|(pid, process)| {
             let name = process.name().to_string_lossy().to_string();
-            // Filter to GUI/media processes (heuristic: skip system processes)
             if name.is_empty() || name == "System" || name == "Idle" {
                 return None;
             }
@@ -44,7 +40,6 @@ pub async fn start_capture(
     let (tx, rx) = mpsc::channel::<Vec<f32>>(64);
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
 
-    // WASAPI capture must run on a dedicated thread (COM apartment)
     std::thread::spawn(move || {
         if let Err(e) = capture_loop(pid, tx, stop_rx) {
             tracing::error!("WASAPI capture error: {e}");
@@ -62,11 +57,12 @@ fn capture_loop(
     use wasapi::*;
 
     // Initialize COM for this thread
-    initialize_mta().map_err(|e| anyhow::anyhow!("COM init failed: {e}"))?;
+    initialize_mta()
+        .ok()
+        .map_err(|e| anyhow::anyhow!("COM init failed: {e}"))?;
 
     // Create a loopback capture client targeting this process
-    let include_process_tree = true;
-    let mut audio_client = AudioClient::new_application_loopback_client(pid, include_process_tree)
+    let mut audio_client = AudioClient::new_application_loopback_client(pid, true)
         .map_err(|e| anyhow::anyhow!("Failed to create loopback client for PID {pid}: {e}"))?;
 
     // Request 48kHz stereo f32
@@ -79,15 +75,13 @@ fn capture_loop(
         None,
     );
 
-    let mode = ShareMode::Shared;
+    // Use event-driven shared mode with autoconvert
+    let mode = StreamMode::EventsShared {
+        autoconvert: true,
+        buffer_duration_hns: 200_000, // 20ms
+    };
     audio_client
-        .initialize_client(
-            &desired_format,
-            &desired_format,
-            &Direction::Capture,
-            &mode,
-            true, // autoconvert
-        )
+        .initialize_client(&desired_format, &Direction::Capture, &mode)
         .map_err(|e| anyhow::anyhow!("Init capture failed: {e}"))?;
 
     let capture_client = audio_client
@@ -103,6 +97,10 @@ fn capture_loop(
         .map_err(|e| anyhow::anyhow!("Start stream failed: {e}"))?;
 
     let mut accumulator: Vec<f32> = Vec::with_capacity(SAMPLES_PER_FRAME * 2);
+    // bytes per frame: channels * 4 bytes (f32)
+    let frame_bytes = CHANNELS as usize * 4;
+    // Buffer for ~100ms of audio
+    let mut read_buf = vec![0u8; SAMPLE_RATE as usize * frame_bytes / 10];
 
     loop {
         // Check stop signal
@@ -115,30 +113,21 @@ fn capture_loop(
             continue;
         }
 
-        // Read available frames
-        match capture_client.read_from_device_to_deinterleaved(CHANNELS as usize, false) {
-            Ok((_frames, data)) => {
-                // Re-interleave: data is Vec<Vec<u8>>, one per channel
-                if data.len() >= CHANNELS as usize {
-                    let ch0: &[f32] = bytemuck_cast_slice(&data[0]);
-                    let ch1: &[f32] = if CHANNELS > 1 {
-                        bytemuck_cast_slice(&data[1])
-                    } else {
-                        ch0
-                    };
+        // Read available frames (interleaved f32 bytes)
+        match capture_client.read_from_device(&mut read_buf) {
+            Ok((frames_read, _info)) => {
+                if frames_read == 0 {
+                    continue;
+                }
+                let bytes_read = frames_read as usize * frame_bytes;
+                let samples: &[f32] = bytemuck_cast_slice(&read_buf[..bytes_read]);
 
-                    for i in 0..ch0.len() {
-                        accumulator.push(ch0[i]);
-                        if CHANNELS > 1 {
-                            accumulator.push(ch1[i]);
-                        }
-                    }
+                accumulator.extend_from_slice(samples);
 
-                    while accumulator.len() >= SAMPLES_PER_FRAME {
-                        let frame: Vec<f32> = accumulator.drain(..SAMPLES_PER_FRAME).collect();
-                        if tx.blocking_send(frame).is_err() {
-                            return Ok(()); // receiver dropped
-                        }
+                while accumulator.len() >= SAMPLES_PER_FRAME {
+                    let frame: Vec<f32> = accumulator.drain(..SAMPLES_PER_FRAME).collect();
+                    if tx.blocking_send(frame).is_err() {
+                        return Ok(());
                     }
                 }
             }

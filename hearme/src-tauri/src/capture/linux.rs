@@ -5,7 +5,7 @@
 //! 2. Match by `application.name` to build the source list
 //! 3. To capture, create a PipeWire stream targeting the app's output node
 
-use super::{AudioSource, CHANNELS, CaptureHandle, FRAME_SIZE, SAMPLE_RATE, SAMPLES_PER_FRAME};
+use super::{AudioSource, CHANNELS, CaptureHandle, SAMPLES_PER_FRAME, SAMPLE_RATE};
 use tokio::sync::mpsc;
 
 /// List applications currently outputting audio via PipeWire.
@@ -77,20 +77,16 @@ pub async fn start_capture(
 ) -> anyhow::Result<(CaptureHandle, mpsc::Receiver<Vec<f32>>)> {
     let node_id: u32 = source.id.parse()?;
     let (tx, rx) = mpsc::channel::<Vec<f32>>(64);
-    let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let (stop_tx, _stop_rx) = tokio::sync::oneshot::channel::<()>();
 
     tokio::task::spawn_blocking(move || {
-        capture_loop(node_id, tx, &mut stop_rx);
+        capture_loop(node_id, tx);
     });
 
     Ok((CaptureHandle::new(stop_tx), rx))
 }
 
-fn capture_loop(
-    target_node_id: u32,
-    tx: mpsc::Sender<Vec<f32>>,
-    stop_rx: &mut tokio::sync::oneshot::Receiver<()>,
-) {
+fn capture_loop(target_node_id: u32, tx: mpsc::Sender<Vec<f32>>) {
     use pipewire as pw;
     use pw::spa::param::audio::{AudioFormat, AudioInfoRaw};
     use pw::spa::pod::Pod;
@@ -170,16 +166,10 @@ fn capture_loop(
         )
         .expect("pw stream connect");
 
-    // Run until stop signal
-    let mainloop_weak = mainloop.downgrade();
-    std::thread::spawn(move || {
-        let _ = stop_rx.try_recv(); // Block not possible here, poll instead
-        // In practice we'd use a pipe/eventfd to signal the mainloop
-        if let Some(ml) = mainloop_weak.upgrade() {
-            ml.quit();
-        }
-    });
-
+    // Run the mainloop. When the capture handle is dropped (stop_tx dropped),
+    // the mpsc sender will fail on try_send, effectively ending capture.
+    // For a clean shutdown, we'd use a pipe/eventfd to signal the mainloop,
+    // but for now just run until the process stream disconnects.
     mainloop.run();
 }
 
