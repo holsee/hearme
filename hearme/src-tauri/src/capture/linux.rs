@@ -135,7 +135,7 @@ fn capture_loop(target_node_id: u32, tx: mpsc::Sender<Vec<f32>>) {
     let tx_clone = tx.clone();
 
     let _listener = stream
-        .add_local_listener()
+        .add_local_listener::<()>()
         .process(move |stream, _| {
             if let Some(mut buffer) = stream.dequeue_buffer() {
                 if let Some(data) = buffer.datas_mut().first_mut() {
