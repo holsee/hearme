@@ -137,18 +137,18 @@ fn capture_loop(target_node_id: u32, tx: mpsc::Sender<Vec<f32>>) {
     let _listener = stream
         .add_local_listener::<()>()
         .process(move |stream, _| {
-            if let Some(mut buffer) = stream.dequeue_buffer() {
-                if let Some(slice) = buffer.datas_mut().first_mut().and_then(|data| data.data()) {
-                    // Convert bytes to f32 samples
-                    let samples: &[f32] = bytemuck_cast_slice(slice);
-                    let mut acc = acc_clone.borrow_mut();
-                    acc.extend_from_slice(samples);
+            if let Some(mut buffer) = stream.dequeue_buffer()
+                && let Some(slice) = buffer.datas_mut().first_mut().and_then(|data| data.data())
+            {
+                // Convert bytes to f32 samples
+                let samples: &[f32] = bytemuck_cast_slice(slice);
+                let mut acc = acc_clone.borrow_mut();
+                acc.extend_from_slice(samples);
 
-                    // Emit complete frames (20ms = SAMPLES_PER_FRAME)
-                    while acc.len() >= SAMPLES_PER_FRAME {
-                        let frame: Vec<f32> = acc.drain(..SAMPLES_PER_FRAME).collect();
-                        let _ = tx_clone.try_send(frame);
-                    }
+                // Emit complete frames (20ms = SAMPLES_PER_FRAME)
+                while acc.len() >= SAMPLES_PER_FRAME {
+                    let frame: Vec<f32> = acc.drain(..SAMPLES_PER_FRAME).collect();
+                    let _ = tx_clone.try_send(frame);
                 }
             }
         })
