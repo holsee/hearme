@@ -67,3 +67,87 @@ impl Decoder {
         Ok(output)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_decode_round_trip_silence() {
+        let mut encoder = Encoder::new().expect("encoder creation");
+        let mut decoder = Decoder::new().expect("decoder creation");
+
+        // 20ms of silence
+        let input = vec![0.0f32; SAMPLES_PER_FRAME];
+        let packet = encoder.encode(&input).expect("encode");
+
+        // Opus packets should be non-empty and much smaller than raw PCM
+        assert!(!packet.is_empty());
+        assert!(packet.len() < SAMPLES_PER_FRAME * 4); // smaller than raw f32 data
+
+        let output = decoder.decode(&packet).expect("decode");
+        assert_eq!(output.len(), SAMPLES_PER_FRAME);
+
+        // Silence in should produce near-silence out
+        for &sample in &output {
+            assert!(sample.abs() < 0.01, "Expected near-silence, got {sample}");
+        }
+    }
+
+    #[test]
+    fn encode_decode_round_trip_sine() {
+        let mut encoder = Encoder::new().expect("encoder creation");
+        let mut decoder = Decoder::new().expect("decoder creation");
+
+        // Generate a 440Hz sine wave, 20ms, stereo interleaved
+        let mut input = vec![0.0f32; SAMPLES_PER_FRAME];
+        for i in 0..FRAME_SIZE {
+            let t = i as f32 / 48_000.0;
+            let sample = (2.0 * std::f32::consts::PI * 440.0 * t).sin() * 0.5;
+            input[i * CHANNELS as usize] = sample; // left
+            input[i * CHANNELS as usize + 1] = sample; // right
+        }
+
+        let packet = encoder.encode(&input).expect("encode");
+        assert!(!packet.is_empty());
+
+        let output = decoder.decode(&packet).expect("decode");
+        assert_eq!(output.len(), SAMPLES_PER_FRAME);
+
+        // Check that the output has non-trivial energy (not all zeros)
+        let energy: f32 = output.iter().map(|s| s * s).sum();
+        assert!(
+            energy > 1.0,
+            "Decoded audio should have significant energy, got {energy}"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Expected")]
+    fn encode_rejects_wrong_frame_size() {
+        let mut encoder = Encoder::new().expect("encoder creation");
+        let wrong_size = vec![0.0f32; SAMPLES_PER_FRAME + 1];
+        let _ = encoder.encode(&wrong_size);
+    }
+
+    #[test]
+    fn multiple_frames_encode_decode() {
+        let mut encoder = Encoder::new().expect("encoder creation");
+        let mut decoder = Decoder::new().expect("decoder creation");
+
+        // Encode and decode 10 consecutive frames
+        for frame_idx in 0..10 {
+            let mut input = vec![0.0f32; SAMPLES_PER_FRAME];
+            for i in 0..FRAME_SIZE {
+                let t = (frame_idx * FRAME_SIZE + i) as f32 / 48_000.0;
+                let sample = (2.0 * std::f32::consts::PI * 440.0 * t).sin() * 0.5;
+                input[i * CHANNELS as usize] = sample;
+                input[i * CHANNELS as usize + 1] = sample;
+            }
+
+            let packet = encoder.encode(&input).expect("encode");
+            let output = decoder.decode(&packet).expect("decode");
+            assert_eq!(output.len(), SAMPLES_PER_FRAME);
+        }
+    }
+}

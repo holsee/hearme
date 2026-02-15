@@ -5,7 +5,7 @@
 //! 2. Match by `application.name` to build the source list
 //! 3. To capture, create a PipeWire stream targeting the app's output node
 
-use super::{AudioSource, CHANNELS, CaptureHandle, SAMPLES_PER_FRAME, SAMPLE_RATE};
+use super::{AudioSource, CHANNELS, CaptureHandle, SAMPLE_RATE, SAMPLES_PER_FRAME};
 use tokio::sync::mpsc;
 
 /// List applications currently outputting audio via PipeWire.

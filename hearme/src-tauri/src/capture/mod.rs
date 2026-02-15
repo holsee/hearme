@@ -76,3 +76,38 @@ impl CaptureHandle {
         Self { _stop: stop }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audio_constants_are_consistent() {
+        // 48kHz is required by Opus
+        assert_eq!(SAMPLE_RATE, 48_000);
+
+        // Stereo
+        assert_eq!(CHANNELS, 2);
+
+        // 20ms at 48kHz = 960 samples per channel
+        assert_eq!(FRAME_SIZE, SAMPLE_RATE as usize / 50);
+
+        // Interleaved: frame_size * channels
+        assert_eq!(SAMPLES_PER_FRAME, FRAME_SIZE * CHANNELS as usize);
+        assert_eq!(SAMPLES_PER_FRAME, 1920);
+    }
+
+    #[test]
+    fn audio_source_serialization() {
+        let source = AudioSource {
+            id: "42".to_string(),
+            name: "Firefox".to_string(),
+        };
+
+        let json = serde_json::to_string(&source).expect("serialize");
+        let deserialized: AudioSource = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(deserialized.id, "42");
+        assert_eq!(deserialized.name, "Firefox");
+    }
+}

@@ -192,3 +192,72 @@ impl ListenSession {
         self.endpoint.close().await;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn ticket_round_trip() {
+        // Create an endpoint just to get a real EndpointAddr
+        let endpoint = Endpoint::builder().bind().await.unwrap();
+        endpoint.online().await;
+        let addr = endpoint.addr();
+
+        let ticket = Ticket { addr: addr.clone() };
+
+        // Encode to string
+        let encoded = ticket.to_string_encoded().unwrap();
+        assert!(!encoded.is_empty());
+
+        // Should be valid base64url (no padding, no +/)
+        assert!(!encoded.contains('+'));
+        assert!(!encoded.contains('/'));
+        assert!(!encoded.contains('='));
+
+        // Decode back
+        let decoded = Ticket::from_string_encoded(&encoded).unwrap();
+
+        // The node ID should match
+        assert_eq!(format!("{:?}", ticket.addr), format!("{:?}", decoded.addr),);
+
+        endpoint.close().await;
+    }
+
+    #[tokio::test]
+    async fn ticket_round_trip_with_whitespace() {
+        let endpoint = Endpoint::builder().bind().await.unwrap();
+        endpoint.online().await;
+
+        let ticket = Ticket {
+            addr: endpoint.addr(),
+        };
+        let encoded = ticket.to_string_encoded().unwrap();
+
+        // Should tolerate leading/trailing whitespace (e.g. from copy-paste)
+        let padded = format!("  {encoded}\n");
+        let decoded = Ticket::from_string_encoded(&padded);
+        assert!(decoded.is_ok());
+
+        endpoint.close().await;
+    }
+
+    #[test]
+    fn ticket_from_invalid_base64_fails() {
+        let result = Ticket::from_string_encoded("not!valid!base64!!!");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn ticket_from_valid_base64_invalid_json_fails() {
+        // Valid base64url but not valid JSON
+        let encoded = data_encoding::BASE64URL_NOPAD.encode(b"not json");
+        let result = Ticket::from_string_encoded(&encoded);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn alpn_is_correct() {
+        assert_eq!(ALPN, b"/hearme/audio/1");
+    }
+}

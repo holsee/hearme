@@ -91,11 +91,32 @@ npm run build
 
 The iroh transport handles NAT traversal automatically. Direct P2P when possible, relay fallback when not.
 
+## Development
+
+```bash
+cd hearme/src-tauri
+
+# Format code
+cargo fmt
+
+# Lint
+cargo clippy --all-targets -- -D warnings
+
+# Run tests
+cargo test
+```
+
 ## CI
 
-GitHub Actions builds for Linux and Windows run on every push to `main` that touches `hearme/` or the workflow file. macOS is commented out in the workflow, ready to enable when needed.
+GitHub Actions runs on every push to `main` that touches `hearme/` or the workflow file:
 
-Build artifacts (`.deb`, `.rpm`, `.AppImage`, `.msi`, `.exe`) are uploaded and downloadable from the [Actions tab](https://github.com/holsee/hearme/actions/workflows/hearme-build.yml).
+1. **Lint & test** — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`
+2. **Build Linux** — Tauri build producing `.deb`, `.rpm`, `.AppImage`
+3. **Build Windows** — Tauri build producing `.msi`, `.exe`
+
+macOS is commented out in the workflow, ready to enable when needed.
+
+Build artifacts are uploaded and downloadable from the [Actions tab](https://github.com/holsee/hearme/actions/workflows/hearme-build.yml).
 
 ## Project Structure
 

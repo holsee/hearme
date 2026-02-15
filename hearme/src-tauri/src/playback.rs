@@ -6,8 +6,8 @@
 
 use crate::capture::{CHANNELS, SAMPLE_RATE};
 use anyhow::Result;
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::Sample;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 /// Handle to an active playback stream. Drop to stop.
 pub struct PlaybackStream {
