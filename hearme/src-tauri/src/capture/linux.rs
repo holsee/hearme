@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 pub async fn list_sources() -> anyhow::Result<Vec<AudioSource>> {
     // Run PipeWire enumeration on a blocking thread since pipewire-rs
     // uses its own main loop and is not async.
-    tokio::task::spawn_blocking(|| list_sources_sync()).await?
+    tokio::task::spawn_blocking(list_sources_sync).await?
 }
 
 fn list_sources_sync() -> anyhow::Result<Vec<AudioSource>> {
@@ -138,18 +138,16 @@ fn capture_loop(target_node_id: u32, tx: mpsc::Sender<Vec<f32>>) {
         .add_local_listener::<()>()
         .process(move |stream, _| {
             if let Some(mut buffer) = stream.dequeue_buffer() {
-                if let Some(data) = buffer.datas_mut().first_mut() {
-                    if let Some(slice) = data.data() {
-                        // Convert bytes to f32 samples
-                        let samples: &[f32] = bytemuck_cast_slice(slice);
-                        let mut acc = acc_clone.borrow_mut();
-                        acc.extend_from_slice(samples);
+                if let Some(slice) = buffer.datas_mut().first_mut().and_then(|data| data.data()) {
+                    // Convert bytes to f32 samples
+                    let samples: &[f32] = bytemuck_cast_slice(slice);
+                    let mut acc = acc_clone.borrow_mut();
+                    acc.extend_from_slice(samples);
 
-                        // Emit complete frames (20ms = SAMPLES_PER_FRAME)
-                        while acc.len() >= SAMPLES_PER_FRAME {
-                            let frame: Vec<f32> = acc.drain(..SAMPLES_PER_FRAME).collect();
-                            let _ = tx_clone.try_send(frame);
-                        }
+                    // Emit complete frames (20ms = SAMPLES_PER_FRAME)
+                    while acc.len() >= SAMPLES_PER_FRAME {
+                        let frame: Vec<f32> = acc.drain(..SAMPLES_PER_FRAME).collect();
+                        let _ = tx_clone.try_send(frame);
                     }
                 }
             }

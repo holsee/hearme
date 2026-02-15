@@ -3,7 +3,7 @@
 //! Wraps the `opus` crate for 48kHz stereo at 64kbps.
 //! Frame size: 20ms = 960 samples/channel = 1920 interleaved f32s.
 
-use crate::capture::{CHANNELS, FRAME_SIZE, SAMPLES_PER_FRAME};
+use crate::capture::{CHANNELS, SAMPLES_PER_FRAME};
 
 /// Maximum Opus packet size (20ms stereo at high bitrate won't exceed this).
 const MAX_PACKET_SIZE: usize = 4000;
@@ -71,6 +71,7 @@ impl Decoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::capture::FRAME_SIZE;
 
     #[test]
     fn encode_decode_round_trip_silence() {

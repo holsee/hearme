@@ -33,12 +33,18 @@ struct ListenContext {
     decode_task: tokio::task::JoinHandle<()>,
 }
 
-impl AppState {
-    pub fn new() -> Self {
+impl Default for AppState {
+    fn default() -> Self {
         Self {
             share: Mutex::new(None),
             listen: Mutex::new(None),
         }
+    }
+}
+
+impl AppState {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
