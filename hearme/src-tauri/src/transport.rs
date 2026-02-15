@@ -95,7 +95,7 @@ struct AudioShareHandler {
 impl ProtocolHandler for AudioShareHandler {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let mut opus_rx = self.opus_tx.subscribe();
-        let remote = connection.remote_endpoint_id();
+        let remote = connection.remote_id();
         info!("Listener connected: {remote}");
 
         // Accept a bi-stream from the listener (they open it to signal readiness)
@@ -147,7 +147,7 @@ impl ListenSession {
             .await
             .context("Failed to connect to sharer")?;
 
-        info!("Connected to sharer: {}", conn.remote_endpoint_id());
+        info!("Connected to sharer: {}", conn.remote_id());
 
         // Open bi-stream to signal we're ready
         let (send, mut recv) = conn.open_bi().await.context("Failed to open bi-stream")?;

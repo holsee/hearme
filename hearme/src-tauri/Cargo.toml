@@ -29,7 +29,7 @@ iroh = "0.96"
 opus = "0.3"
 
 # Audio playback (cross-platform)
-cpal = { version = "0.15", features = [] }
+cpal = "0.17"
 
 # Lock-free ring buffer for audio thread <-> async bridge
 rtrb = "0.3"
@@ -49,7 +49,7 @@ anyhow = "1"
 
 # Platform-specific audio capture
 [target.'cfg(target_os = "linux")'.dependencies]
-pipewire = "0.8"
+pipewire = { version = "0.8", features = ["v0_3_44"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 screencapturekit = "1"
