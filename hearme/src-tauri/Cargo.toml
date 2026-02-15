@@ -1,0 +1,66 @@
+[package]
+name = "hearme"
+version = "0.1.0"
+edition = "2024"
+description = "Share your app audio P2P"
+
+[lib]
+name = "hearme_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "hearme"
+path = "src/main.rs"
+
+[dependencies]
+# Tauri
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Async
+tokio = { version = "1", features = ["full"] }
+
+# P2P networking
+iroh = "0.96"
+
+# Audio codec
+opus = "0.3"
+
+# Audio playback (cross-platform)
+cpal = { version = "0.15", features = [] }
+
+# Lock-free ring buffer for audio thread <-> async bridge
+rtrb = "0.3"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Serialization for wire protocol
+postcard = { version = "1", features = ["alloc"] }
+
+# Base64 for ticket encoding
+data-encoding = "2"
+
+# Error handling
+anyhow = "1"
+
+# Platform-specific audio capture
+[target.'cfg(target_os = "linux")'.dependencies]
+pipewire = "0.8"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+screencapturekit = "1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+wasapi = "0.22"
+sysinfo = "0.37"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
