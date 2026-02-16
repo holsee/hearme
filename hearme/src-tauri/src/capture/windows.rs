@@ -7,22 +7,83 @@
 use super::{AudioSource, CHANNELS, CaptureHandle, SAMPLE_RATE, SAMPLES_PER_FRAME};
 use tokio::sync::mpsc;
 
+/// List applications with active audio sessions via WASAPI session enumeration.
+/// Runs on a blocking thread because COM/WASAPI objects are `!Send`.
 pub async fn list_sources() -> anyhow::Result<Vec<AudioSource>> {
-    use sysinfo::System;
+    tokio::task::spawn_blocking(list_sources_sync).await?
+}
 
+fn list_sources_sync() -> anyhow::Result<Vec<AudioSource>> {
+    use std::collections::HashMap;
+    use sysinfo::System;
+    use wasapi::*;
+
+    // Initialize COM for this thread
+    initialize_mta()
+        .ok()
+        .map_err(|e| anyhow::anyhow!("COM init failed: {e}"))?;
+
+    // Collect PIDs with active audio sessions from all render devices
+    let mut audio_pids: Vec<u32> = Vec::new();
+    let enumerator =
+        DeviceEnumerator::new().map_err(|e| anyhow::anyhow!("DeviceEnumerator failed: {e}"))?;
+    let collection = enumerator
+        .get_device_collection(&Direction::Render)
+        .map_err(|e| anyhow::anyhow!("get_device_collection failed: {e}"))?;
+
+    for device_result in &collection {
+        let device = match device_result {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let session_manager = match device.get_iaudiosessionmanager() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let session_enum = match session_manager.get_audiosessionenumerator() {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let count = match session_enum.get_count() {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        for i in 0..count {
+            if let Ok(session) = session_enum.get_session(i) {
+                let pid = session.get_process_id().unwrap_or(0);
+                let state = session.get_state().unwrap_or(SessionState::Expired);
+                // PID 0 = system audio engine, skip it
+                if pid != 0 && state == SessionState::Active {
+                    audio_pids.push(pid);
+                }
+            }
+        }
+    }
+
+    if audio_pids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Resolve PIDs to process names via sysinfo
     let mut sys = System::new();
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
-    let mut sources: Vec<AudioSource> = sys
+    let pid_to_name: HashMap<u32, String> = sys
         .processes()
         .iter()
-        .filter_map(|(pid, process)| {
-            let name = process.name().to_string_lossy().to_string();
-            if name.is_empty() || name == "System" || name == "Idle" {
+        .map(|(pid, process)| (pid.as_u32(), process.name().to_string_lossy().to_string()))
+        .collect();
+
+    let mut sources: Vec<AudioSource> = audio_pids
+        .into_iter()
+        .filter_map(|pid| {
+            let name = pid_to_name.get(&pid)?.clone();
+            if name.is_empty() {
                 return None;
             }
             Some(AudioSource {
-                id: pid.as_u32().to_string(),
+                id: pid.to_string(),
                 name,
             })
         })
